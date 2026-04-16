@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 
 import csv
+import os
 import re
 import sys
 from collections import OrderedDict
 from pathlib import Path
 
 
-REPORT_DIR = Path("/tmp/sift_reports")
-REPORT_FILE = REPORT_DIR / "final_report.csv"
+REPORT_DIR = Path(os.environ.get("SIFT_REPORT_DIR", "/tmp/sift_reports"))
+REPORT_BASENAME = os.environ.get("SIFT_REPORT_BASENAME", "final_report")
+RUN_ID = os.environ.get("SIFT_RUN_ID", "manual")
+REPORT_FILE = REPORT_DIR / f"{REPORT_BASENAME}_{RUN_ID}.csv"
 ERROR_TYPE_PATTERN = re.compile(r"\b(ERROR|CRITICAL)\b")
 
 
@@ -21,9 +24,8 @@ def parse_stream_line(raw_line: str) -> tuple[str, str, str, str, str] | None:
     3. process identifier
     4. the full original log line
 
-    Keeping parsing here centralizes the log-to-CSV transformation in Python,
-    where string handling and summarization logic are easier to read in an
-    interview setting than embedding everything into shell one-liners.
+    Keeping parsing in Python makes it much easier to maintain summarization
+    rules than pushing every transformation into shell one-liners.
     """
     stripped = raw_line.strip()
     if not stripped:
@@ -67,21 +69,8 @@ def build_summary(
     return summary
 
 
-def main() -> int:
-    # We consume stdin directly because it lets Bash stream the already filtered
-    # log events into Python without creating temporary files.
-    # WHY: pipes keep the data flowing in memory, which avoids extra disk I/O,
-    # reduces end-to-end latency for alerting, and minimizes the number of
-    # intermediate files that could expose operationally sensitive log data.
-    parsed_rows: list[tuple[str, str, str, str, str]] = []
-
-    for line in sys.stdin:
-        parsed = parse_stream_line(line)
-        if parsed is not None:
-            parsed_rows.append(parsed)
-
-    summary = build_summary(parsed_rows)
-
+def write_report(summary: OrderedDict[str, dict[str, str | int]]) -> Path:
+    """Persist the summary into a timestamped CSV file for later inspection."""
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
     with REPORT_FILE.open("w", newline="", encoding="utf-8") as csv_file:
@@ -100,6 +89,24 @@ def main() -> int:
                 ]
             )
 
+    return REPORT_FILE
+
+
+def main() -> int:
+    # We consume stdin directly because it lets the shell pipeline stream log
+    # events into Python without creating temporary files.
+    # WHY: pipes keep the data moving in memory, so we avoid extra disk I/O,
+    # reduce processing latency, and minimize the number of intermediate files
+    # that could expose sensitive operational data.
+    parsed_rows: list[tuple[str, str, str, str, str]] = []
+
+    for line in sys.stdin:
+        parsed = parse_stream_line(line)
+        if parsed is not None:
+            parsed_rows.append(parsed)
+
+    summary = build_summary(parsed_rows)
+    write_report(summary)
     return 0
 
 

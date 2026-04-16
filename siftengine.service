@@ -7,8 +7,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/Users/sauravbhatta/Desktop/SiftEngine
 ExecStart=/Users/sauravbhatta/Desktop/SiftEngine/sift.sh
-Environment=ALERT_WEBHOOK_URL=
-Environment=ALERT_EMAIL_TO=
+EnvironmentFile=-/etc/siftengine/siftengine.env
 
 [Install]
 WantedBy=multi-user.target

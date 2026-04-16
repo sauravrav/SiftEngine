@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import csv
+import json
 import os
 import re
 import sys
@@ -11,22 +12,18 @@ from pathlib import Path
 REPORT_DIR = Path(os.environ.get("SIFT_REPORT_DIR", "/tmp/sift_reports"))
 REPORT_BASENAME = os.environ.get("SIFT_REPORT_BASENAME", "final_report")
 RUN_ID = os.environ.get("SIFT_RUN_ID", "manual")
+LOG_FORMAT = os.environ.get("SIFT_LOG_FORMAT", "plain")
 REPORT_FILE = REPORT_DIR / f"{REPORT_BASENAME}_{RUN_ID}.csv"
 ERROR_TYPE_PATTERN = re.compile(r"\b(ERROR|CRITICAL)\b")
+IPV4_PATTERN = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
 
-def parse_stream_line(raw_line: str) -> tuple[str, str, str, str, str] | None:
-    """Parse a single streamed record arriving from the Bash pipeline.
+def redact_ipv4(value: str) -> str:
+    return IPV4_PATTERN.sub("[IP_REDACTED]", value)
 
-    The shell pipeline uses awk to prepend:
-    1. date
-    2. time
-    3. process identifier
-    4. the full original log line
 
-    Keeping parsing in Python makes it much easier to maintain summarization
-    rules than pushing every transformation into shell one-liners.
-    """
+def parse_plain_stream_line(raw_line: str) -> tuple[str, str, str, str, str] | None:
+    """Parse a streamed plain-text record arriving from the Bash pipeline."""
     stripped = raw_line.strip()
     if not stripped:
         return None
@@ -46,6 +43,43 @@ def parse_stream_line(raw_line: str) -> tuple[str, str, str, str, str] | None:
         error_message = full_line
 
     return date_value, time_value, process_id, error_type, error_message
+
+
+def parse_json_stream_line(raw_line: str) -> tuple[str, str, str, str, str] | None:
+    """Parse one JSON log record and normalize it into the same CSV schema."""
+    stripped = raw_line.strip()
+    if not stripped:
+        return None
+
+    payload = json.loads(stripped)
+    severity = str(payload.get("severity") or payload.get("level") or "").upper()
+    if severity not in {"ERROR", "CRITICAL"}:
+        return None
+
+    timestamp = str(payload.get("timestamp") or payload.get("time") or "")
+    if "T" in timestamp:
+        date_value, remainder = timestamp.split("T", 1)
+        time_value = remainder.split("Z", 1)[0].split("+", 1)[0]
+    else:
+        timestamp_parts = timestamp.split(maxsplit=1)
+        date_value = timestamp_parts[0] if timestamp_parts else "UNKNOWN_DATE"
+        time_value = timestamp_parts[1] if len(timestamp_parts) > 1 else "UNKNOWN_TIME"
+
+    process_id = str(payload.get("process_id") or payload.get("pid") or payload.get("service") or "UNKNOWN_PID")
+    message = str(payload.get("message") or payload.get("error") or payload)
+    message = redact_ipv4(message)
+
+    for candidate_key in ("client_ip", "source_ip", "remote_ip", "ip"):
+        if candidate_key in payload and payload[candidate_key] is not None:
+            message = f"{message} {candidate_key}={redact_ipv4(str(payload[candidate_key]))}"
+
+    return date_value, time_value, process_id, severity, message
+
+
+def parse_stream_line(raw_line: str) -> tuple[str, str, str, str, str] | None:
+    if LOG_FORMAT == "json":
+        return parse_json_stream_line(raw_line)
+    return parse_plain_stream_line(raw_line)
 
 
 def build_summary(

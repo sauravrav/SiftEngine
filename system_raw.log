@@ -1,0 +1,10 @@
+2026-04-14 09:15:21 web01 authsvc 4312 INFO User login succeeded for user=alice src=10.24.8.17
+2026-04-14 09:16:02 web01 authsvc 4312 ERROR Authentication backend timeout while contacting ldap-primary src=10.24.8.17
+2026-04-14 09:16:44 web02 payments 7821 CRITICAL Payment queue stalled on shard=3 remote=172.16.44.19
+2026-04-14 09:17:05 web03 orders 5120 WARN Inventory lookup exceeded soft threshold item_id=9182
+2026-04-14 09:17:18 web01 authsvc 4312 ERROR Authentication backend timeout while contacting ldap-primary src=10.24.8.17
+2026-04-14 09:18:11 db01 postgres 2201 ERROR Replica lag exceeded threshold lag_seconds=47 peer=192.168.10.24
+2026-04-14 09:18:59 edge01 nginx 991 CRITICAL Upstream health checks failed for api-gateway src=203.0.113.45
+2026-04-14 09:19:33 batch01 worker 6407 INFO Completed reconciliation job in 18s
+2026-04-14 09:20:07 db01 postgres 2201 ERROR Replica lag exceeded threshold lag_seconds=47 peer=192.168.10.24
+2026-04-14 09:21:42 web02 payments 7821 ERROR Card tokenization retry budget exhausted customer_ip=198.51.100.88

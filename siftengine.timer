@@ -1,0 +1,10 @@
+[Unit]
+Description=Run SiftEngine every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=siftengine.service
+
+[Install]
+WantedBy=timers.target

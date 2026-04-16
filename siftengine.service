@@ -1,0 +1,14 @@
+[Unit]
+Description=SiftEngine log processing pipeline
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/Users/sauravbhatta/Desktop/SiftEngine
+ExecStart=/Users/sauravbhatta/Desktop/SiftEngine/sift.sh
+Environment=ALERT_WEBHOOK_URL=
+Environment=ALERT_EMAIL_TO=
+
+[Install]
+WantedBy=multi-user.target

@@ -116,11 +116,3 @@ sudo systemctl enable --now siftengine.timer
 ```
 
 The service reads configuration from `/etc/siftengine/siftengine.env`.
-
-## Good portfolio talking points
-
-- Why inode-aware state matters during log rotation
-- Why alert deduplication reduces pager fatigue
-- Why locking matters for scheduled jobs
-- Why metrics and status outputs help operate the pipeline itself
-- Why supporting both plain text and JSON logs makes the tool more reusable

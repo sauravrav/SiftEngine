@@ -2,12 +2,6 @@
 
 SiftEngine is an SRE-focused log processing pipeline built with Bash and Python. It scans log files for urgent failures, redacts IPv4 addresses, summarizes repeated incidents, writes timestamped CSV reports, and can send alerts for new critical failures.
 
-## Why this project is useful for SRE interviews
-
-- It demonstrates Unix pipeline usage with `grep`, `sed`, `awk`, and `stdin`-driven Python processing.
-- It shows operational thinking: alert deduplication, retry logic, log-rotation-safe state tracking, locking, and report hygiene.
-- It produces artifacts that SRE teams actually use: CSV summaries, status output, metrics, and schedulable service files.
-
 ## Features
 
 - Plain-text log mode using a shell pipeline

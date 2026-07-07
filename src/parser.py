@@ -28,41 +28,38 @@ def parse_file(file_path):
     """
     events = []
 
-    # We open the file in read mode because the parser should only read logs,
-    # not change them.
-    file = open(file_path, "r")
+    # The "with" statement automatically closes the file when we are done.
+    # This is safer than calling file.close() ourselves.
+    with open(file_path, "r") as file:
+        for line in file:
+            # strip() removes the newline at the end and also catches blank lines.
+            line = line.strip()
 
-    for line in file:
-        # strip() removes the newline at the end and also catches blank lines.
-        line = line.strip()
+            # Blank lines do not contain useful log information, so we skip them.
+            if line == "":
+                continue
 
-        # Blank lines do not contain useful log information, so we skip them.
-        if line == "":
-            continue
+            parts = line.split()
 
-        parts = line.split()
+            # Our current log format expects:
+            # date time service action value
+            date = parts[0]
+            time = parts[1]
+            service = parts[2]
+            action = parts[3]
+            value = parts[4]
 
-        # Our current log format expects:
-        # date time service action value
-        date = parts[0]
-        time = parts[1]
-        service = parts[2]
-        action = parts[3]
-        value = parts[4]
+            # The date and time belong together, so we combine them into one field.
+            timestamp = date + " " + time
 
-        # The date and time belong together, so we combine them into one field.
-        timestamp = date + " " + time
+            event = {
+                "timestamp": timestamp,
+                "service": service,
+                "action": action,
+                "value": value,
+            }
 
-        event = {
-            "timestamp": timestamp,
-            "service": service,
-            "action": action,
-            "value": value,
-        }
-
-        events.append(event)
-
-    file.close()
+            events.append(event)
 
     return events
 

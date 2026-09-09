@@ -127,7 +127,14 @@ def build_execution_trace(events):
                 stack.pop()
 
     return trace
-
+def print_trace(trace, indentation):
+    """
+    Print the nested trace in a readable tree format.
+    """
+    for node in trace:
+        spaces = "  " * indentation
+        print(spaces + node["service"])
+        print_trace(node["children"], indentation + 1)
 
 if __name__ == "__main__":
     parsed_events = parse_file("logs/sample_logs.txt")

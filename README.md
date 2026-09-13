@@ -1,112 +1,171 @@
 # SiftEngine
 
-SiftEngine is an SRE-focused log processing pipeline built with Bash and Python. It scans log files for urgent failures, redacts IPv4 addresses, summarizes repeated incidents, writes timestamped CSV reports, and can send alerts for new critical failures.
+SiftEngine is a learning-focused Python prototype that transforms sequential
+service logs into nested execution traces and directed dependency graphs.
 
-## Features
+The project was created to explore practical applications of stacks, graphs,
+depth-first search, and log parsing. It uses a stack to reconstruct the nested
+order of service calls and DFS to detect circular dependencies between services.
 
-- Plain-text log mode using a shell pipeline
-- JSON log mode for structured logs
-- IPv4 redaction before reports and alerts
-- Summary counts for repeated error messages
-- Timestamped reports plus a stable `final_report.csv`
-- Webhook or email alerting for `CRITICAL` issues
-- Alert cooldown to avoid repeated paging for the same incident
-- Metrics output in Prometheus text format
-- Latest run status in JSON
-- Locking to prevent overlapping runs
-- `systemd` service and timer files for every-5-minute scheduling
-- Tests for parsing and end-to-end execution
+## Project Purpose
 
-## Files
+In a service-based application, a single request may pass through multiple
+services.
 
-- [sift.sh](/Users/sauravbhatta/Desktop/SiftEngine/sift.sh): orchestration, alerting, state tracking, metrics, status, locking
-- [process.py](/Users/sauravbhatta/Desktop/SiftEngine/process.py): log normalization and CSV report generation
-- [test_process.py](/Users/sauravbhatta/Desktop/SiftEngine/test_process.py): unit and integration tests
-- [siftengine.service](/Users/sauravbhatta/Desktop/SiftEngine/siftengine.service): `systemd` service unit
-- [siftengine.timer](/Users/sauravbhatta/Desktop/SiftEngine/siftengine.timer): `systemd` timer
-- [system_raw.log](/Users/sauravbhatta/Desktop/SiftEngine/system_raw.log): demo input log
-- [Dockerfile](/Users/sauravbhatta/Desktop/SiftEngine/Dockerfile): containerized run target
-- [.env.example](/Users/sauravbhatta/Desktop/SiftEngine/.env.example): sample configuration
+For example:
 
-## Architecture
+```text
+API -> Auth -> User -> Database
+Raw logs normally represent these interactions as sequential events. SiftEngine
+parses those events and produces two representations:
 
-### Plain-text mode
+A nested execution trace showing how one request moved through the services.
+A directed dependency graph showing which services called other services.
 
-`tail -> grep -> sed -> awk -> python3 process.py`
+The dependency graph can then be analyzed for circular service dependencies.
+Sample Log Format
 
-- `grep` keeps only `ERROR` and `CRITICAL`
-- `sed` redacts IPv4 addresses
-- `awk` extracts date, time, and process ID while preserving the full log line
-- Python summarizes repeated messages and writes CSV output
+SiftEngine currently uses a simple five-field log format:
 
-The pipeline intentionally uses pipes instead of temporary files to reduce disk I/O, lower alert latency, and avoid leaving intermediate sensitive log data on disk.
+date time service action value
 
-### JSON mode
+Example:
 
-When `SIFT_LOG_FORMAT=json`, the shell script streams raw JSON lines directly into Python. Python then parses structured fields like `timestamp`, `severity`, `pid`, and `message`.
+2026-07-06 10:00 API START req1
+2026-07-06 10:00 API CALL Auth
+2026-07-06 10:00 Auth START req1
+2026-07-06 10:00 Auth CALL User
+2026-07-06 10:00 User START req1
+2026-07-06 10:00 User CALL Database
+2026-07-06 10:00 Database END req1
+2026-07-06 10:00 User END req1
+2026-07-06 10:00 Auth END req1
+2026-07-06 10:00 API END req1
 
-## Outputs
+The supported actions are:
 
-SiftEngine writes its outputs into `SIFT_REPORT_DIR`:
+START: A service begins processing a request.
+CALL: A service calls another service.
+END: A service finishes processing the request.
+Program Flow
+Sequential log file
+        |
+        v
+Parse lines into structured events
+        |
+        +-----------------------------+
+        |                             |
+        v                             v
+Build execution trace          Build dependency graph
+using a stack                  using CALL events
+                                      |
+                                      v
+                              Detect cycles using DFS
+Log Parsing
 
-- `final_report_<RUN_ID>.csv`: timestamped report for each run
-- `final_report.csv`: latest report copy
-- `pipeline_state.env`: inode and byte-offset state
-- `alert_state.env`: alert fingerprint and cooldown state
-- `metrics.prom`: Prometheus-style metrics for the latest run
-- `latest_status.json`: run status and summary counts
+Each log line is converted into a Python dictionary.
 
-## Run locally
+For example:
 
-```bash
-chmod +x sift.sh process.py test_process.py
-./sift.sh
-```
+2026-07-06 10:00 API CALL Auth
+Becomes:
 
-## Run tests
+{
+    "timestamp": "2026-07-06 10:00",
+    "service": "API",
+    "action": "CALL",
+    "value": "Auth"
+}
 
-```bash
-python3 -m unittest -v
-```
+This structured representation is passed to the trace builder and graph builder.
+Stack-Based Execution Trace
 
-## Example environment variables
+The execution-trace builder uses a stack to track the currently active service
+and its parent call context.
 
-```bash
-export SIFT_INPUT_LOG=system_raw.log
-export SIFT_REPORT_DIR=/tmp/sift_reports
-export SIFT_LOG_FORMAT=plain
-export ALERT_WEBHOOK_URL=https://example.invalid/webhook
-export ALERT_COOLDOWN_SECONDS=900
-```
+When a service starts or is called, it is added to the stack. When the service
+ends, it is removed from the stack. The service currently at the top of the
+stack represents the active service.
 
-## Docker
+For the sample logs, the generated trace is:
 
-Build:
+API
+  Auth
+    User
+      Database
 
-```bash
-docker build -t siftengine .
-```
+This converts flat sequential logs into a nested representation of the request's
+execution flow.
+Directed Dependency Graph
 
-Run:
+For every CALL event, SiftEngine creates a directed edge from the calling
+service to the target service.
 
-```bash
-docker run --rm \
-  -e SIFT_INPUT_LOG=/app/system_raw.log \
-  -e SIFT_REPORT_DIR=/tmp/sift_reports \
-  siftengine
-```
+For example:
 
-## systemd setup
+API CALL Auth
 
-Copy the unit files on a Linux host:
+Creates the edge:
 
-```bash
-sudo cp siftengine.service /etc/systemd/system/
-sudo cp siftengine.timer /etc/systemd/system/
-sudo mkdir -p /etc/siftengine
-sudo cp .env.example /etc/siftengine/siftengine.env
-sudo systemctl daemon-reload
-sudo systemctl enable --now siftengine.timer
-```
+API -> Auth
 
-The service reads configuration from `/etc/siftengine/siftengine.env`.
+The complete sample graph is stored as an adjacency list:
+
+{
+    "API": ["Auth"],
+    "Auth": ["User"],
+    "User": ["Database"]
+}
+
+An adjacency list was selected because it provides a simple and
+space-efficient representation for a sparse service graph.
+
+DFS-Based Cycle Detection
+
+SiftEngine uses depth-first search to detect circular dependencies in the
+directed graph.
+
+The algorithm maintains two sets:
+
+visiting: Services in the current DFS path.
+visited: Services that have already been completely explored.
+
+If DFS encounters a service that is already in visiting, the current path
+contains a cycle.
+
+Example:
+
+API -> Auth -> User -> API
+
+This cycle could indicate a potentially risky circular dependency. It does not
+necessarily prove that an infinite runtime loop occurred, but it identifies a
+dependency path that may require further investigation.
+
+Project Structure
+SiftEngine/
+├── logs/
+│   └── sample_logs.txt
+├── src/
+│   ├── main.py
+│   ├── parser.py
+│   ├── graph_builder.py
+│   └── cycle_detection.py
+└── README.md
+Core Files
+src/main.py: Runs the complete analysis flow.
+src/parser.py: Parses logs and reconstructs nested execution traces.
+src/graph_builder.py: Builds the directed service graph.
+src/cycle_detection.py: Detects cycles using depth-first search.
+Running the Project
+Requirements
+Python 3.10 or later
+No third-party Python packages are required
+Run
+
+From the project root:
+
+python3 src/main.py logs/sample_logs.txt
+
+The sample log file is used automatically when no path is provided:
+
+python3 src/main.py
